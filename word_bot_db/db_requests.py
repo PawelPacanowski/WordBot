@@ -1,6 +1,7 @@
 import requests
+from dotenv import dotenv_values
 
-_base_url = "http://127.0.0.1:8000"
+_base_url = dotenv_values(".env").get("API_URL")
 
 
 async def initialize_server(discord_server_id: int, users: list[int]) -> bool:

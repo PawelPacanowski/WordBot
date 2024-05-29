@@ -8,7 +8,17 @@ from utility import scripts
 class SlashCommands(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
-        
+
+    @discord.slash_command(name="add_to_whitelist")
+    async def add_to_whitelist(self, ctx, member: discord.Member):
+        await ctx.respond("work in progress")
+
+
+    @discord.slash_command(name="remove_from_whitelist")
+    async def remove_from_whitelist(self, ctx, member: discord.Member):
+        await ctx.respond("work in progress")
+
+
     @discord.slash_command(name="update_server")
     async def update_server(self, ctx):
         # heavy workload
@@ -150,7 +160,10 @@ class SlashCommands(commands.Cog):
     async def get_server_word_count(self, ctx, word: str):
         await ctx.defer()
         count = await db_requests.get_server_word_count(ctx.guild.id, word)
-        await ctx.respond(f"There are **{count}** occurrences of: *{word}* in this server")
+        if count:
+            await ctx.respond(f"There are **{count}** occurrences of: *{word}* in this server")
+        else:
+            await ctx.respond(f"*{word}* never has been said or is not flagged")
 
 
 
@@ -161,7 +174,6 @@ class SlashCommands(commands.Cog):
         if member.bot:
             await ctx.send_response("Bots are not tracked", ephemeral=True)
             return
-
 
         server_id = ctx.guild.id
         user_id = member.id
@@ -182,24 +194,79 @@ class SlashCommands(commands.Cog):
 
 
 
-    # @discord.slash_command(name="get_user_word_count")
-    # async def get_user_word_count(self, ctx, user: discord.User, word: str):
-    #     pass
-    #
-    #
-    # @discord.slash_command(name="get_user_last_message")
-    # async def get_user_last_message(self, ctx, user: discord.User, word: str):
-    #     pass
-    #
-    #
-    # @discord.slash_command(name="get_user_first_message")
-    # async def get_user_first_message(self, ctx, user: discord.User, word: str):
-    #     pass
-    #
-    #
-    # @discord.slash_command(name="get_leaderboard")
-    # async def get_leaderboard(self, ctx):
-    #     pass
+    @discord.slash_command(name="get_user_word_count")
+    async def get_user_word_count(self, ctx, user: discord.User, word: str):
+        await ctx.defer()
+        count = await db_requests.get_user_word_count(ctx.guild.id, user.id, word)
+        if count:
+            await ctx.respond(f"{user.mention} said *{word}* **{count}** times :)")
+        else:
+            await ctx.respond(f"{user.mention} never said *{word}* or word is not flagged")
+
+
+    @discord.slash_command(name="get_user_last_message", description="Most recent message with flagged words.")
+    async def get_user_last_message(self, ctx, user: discord.User):
+        await ctx.defer()
+
+        if user.bot:
+            await ctx.respond("Bots are not tracked", ephemeral=True)
+            return
+
+        flagged_words = await db_requests.get_flagged_words(ctx.guild.id)
+        channel_list = []
+
+        for channel in ctx.guild.channels:
+            if isinstance(channel, discord.TextChannel):
+                channel_list.append(channel)
+
+        search_tasks = [scripts.get_last_channel_message(channel, user, flagged_words) for channel in channel_list]
+        results = await asyncio.gather(*search_tasks)
+
+        last_message = None
+        for message in results:
+            if last_message is None:
+                last_message = message
+            else:
+                if message.created_at > last_message.created_at:
+                    last_message = message
+
+        await ctx.respond(f"{user.mention} last message on this server, containing flagged words:\n*{last_message.content}*\n"
+                          f"Channel: {last_message.channel}\n"
+                          f"Time: {last_message.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    @discord.slash_command(name="get_user_first_message", description="First message with flagged words")
+    async def get_user_first_message(self, ctx, user: discord.User):
+        await ctx.defer()
+
+        if user.bot:
+            await ctx.respond("Bots are not tracked", ephemeral=True)
+            return
+
+        flagged_words = await db_requests.get_flagged_words(ctx.guild.id)
+        channel_list = []
+
+        for channel in ctx.guild.channels:
+            if isinstance(channel, discord.TextChannel):
+                channel_list.append(channel)
+
+        search_tasks = [scripts.get_first_channel_message(channel, user, flagged_words) for channel in channel_list]
+        results = await asyncio.gather(*search_tasks)
+
+        last_message = None
+        for message in results:
+            if last_message is None:
+                last_message = message
+            else:
+                if message.created_at < last_message.created_at:
+                    last_message = message
+
+        await ctx.respond(f"{user.mention} first message on this server, containing flagged words:\n*{last_message.content}*\n"
+                          f"Channel: {last_message.channel}\n"
+                          f"Time: {last_message.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    @discord.slash_command(name="add_response", description="Bot response for a given word/sentence")
+    async def add_response(self, ctx, trigger: str, response: str):
+        await ctx.respond("work in progress")
 
 
 
