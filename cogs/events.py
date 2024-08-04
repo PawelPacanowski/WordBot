@@ -1,13 +1,8 @@
 import asyncio
 import datetime
-
 import discord
 from discord.ext import commands
-from word_bot_db import db_requests
-
-
-
-
+from database_api import requests
 
 
 class Events(commands.Cog):
@@ -18,30 +13,22 @@ class Events(commands.Cog):
     cooldowns: list[int] = []
 
     @commands.Cog.listener()
-
     async def on_ready(self):
-        guilds = self.bot.guilds
+        tasks = []
+        for guild in self.bot.guilds:
+            task = asyncio.create_task(requests.initialize_guild(guild))
+            tasks.append(task)
 
-        for guild in guilds:
-            member_list = guild.members
-            member_ids = [member.id for member in member_list]
-            await db_requests.initialize_server(guild.id, member_ids)
-
+        await asyncio.gather(*tasks)
         print(f'[{datetime.datetime.now()}] {self.bot.user} online')
-
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        await db_requests.create_user_profile(member.guild.id, member.id)
-        await db_requests.add_user_flagged_words(member.guild.id, member.id)
-
+        await requests.create_member_profile(member.guild, member)
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
-        member_list = guild.members
-        member_ids = [member.id for member in member_list]
-        await db_requests.initialize_server(guild.id, member_ids)
-
+        await requests.initialize_guild(guild)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -49,23 +36,24 @@ class Events(commands.Cog):
             return
 
         user_message = message.content.lower().split()
-        flagged_words = await db_requests.get_flagged_words(message.guild.id)
-        message_record = {"total_words": 0}
+        server_flagged_words = await requests.get_flagged_words(message.guild)
+        total_words = 0
+        user_flagged_words = {}
 
         for word in user_message:
-            message_record["total_words"] += 1
-            if word in flagged_words:
+            total_words += 1
+            if word in server_flagged_words.keys():
                 if message.author.id not in self.cooldowns:
                     await message.channel.send("We don't say that here")
                     self.cooldowns.append(message.author.id)
 
-                if word in message_record:
-                    message_record[word] += 1
+                if word in user_flagged_words:
+                    user_flagged_words[word] += 1
                 else:
-                    message_record.update({word: 1})
+                    user_flagged_words.update({word: 1})
 
-        await db_requests.add_server_words_count(message.guild.id, message_record)
-        await db_requests.add_user_words_count(message.guild.id, message.author.id, message_record)
+        await requests.update_member_flags(message.guild, message.author, user_flagged_words)
+        await requests.update_member_total_words(message.guild, message.author, total_words)
 
         await asyncio.sleep(60)
         if message.author.id in self.cooldowns:
@@ -74,8 +62,5 @@ class Events(commands.Cog):
         return
 
 
-
-
 def setup(bot):
     bot.add_cog(Events(bot))
-    
